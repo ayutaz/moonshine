@@ -6,9 +6,95 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Moonshine Voice — リアルタイム音声アプリケーション向けのオンデバイス音声認識(STT)ライブラリ。C++20コアに Python / Swift / Android(JNI) のバインディングを持つクロスプラットフォーム構成。8言語以上対応（英語はMITライセンス、他言語はCommunity License）。
 
-## ビルドとテスト
+## Python環境構築（uv）
 
-### C++コアのビルド＆テスト（Windows）
+### 初期セットアップ
+
+```bash
+uv python pin 3.12
+uv add moonshine-voice
+```
+
+現在の `pyproject.toml` の依存関係:
+
+- `moonshine-voice>=0.0.49` — STTライブラリ本体（PyPIから。ネイティブ共有ライブラリ同梱）
+- `datasets>=4.6.1` — HuggingFaceデータセット読み込み用
+- `soundfile>=0.13.1` — 音声ファイルの読み書き
+
+依存パッケージの追加は `uv add <package>` で行う。`uv.lock` は `.gitignore` 済み。
+
+### 仮想環境の復元
+
+```bash
+uv sync
+```
+
+## 推論の実行
+
+### WAVファイルの書き起こし（英語）
+
+```bash
+uv run python examples/python/basic_transcription.py
+```
+
+内蔵テスト音声 `two_cities.wav` を使い、非ストリーミングとストリーミング両方で書き起こしを実行する。初回実行時にモデル（約290MB）が自動ダウンロードされる。
+
+任意のWAVファイルを指定する場合:
+
+```bash
+uv run python examples/python/basic_transcription.py path/to/audio.wav
+```
+
+### 日本語モデルでの書き起こし
+
+```bash
+uv run python examples/python/basic_transcription.py --language ja path/to/japanese_audio.wav
+```
+
+対応言語コード: `en`（英語）, `ja`（日本語）, `es`（スペイン語）, `ko`（韓国語）, `zh`（中国語）, `ar`（アラビア語）, `uk`（ウクライナ語）, `vi`（ベトナム語）。言語ごとに専用モデルが初回実行時に自動ダウンロードされる。
+
+### マイク入力でリアルタイム認識
+
+```bash
+uv run python examples/python/mic_transcription.py
+uv run python examples/python/mic_transcription.py --language ja
+```
+
+### 音声コマンド認識（Intent Recognition）
+
+```bash
+uv run python examples/python/intent_recognition.py
+```
+
+### テスト用日本語音声の取得
+
+`test-assets/ja/` に日本語テスト音声を配置する（`.gitignore` 済み）。ReazonSpeechテストセットからダウンロードする例:
+
+```python
+from huggingface_hub import hf_hub_download
+import pyarrow.parquet as pq
+import pyarrow as pa
+import soundfile as sf
+import io
+
+parquet_path = hf_hub_download(
+    'japanese-asr/ja_asr.reazonspeech_test',
+    'data/test-00000-of-00002.parquet',
+    repo_type='dataset'
+)
+pf = pq.ParquetFile(parquet_path)
+batch = next(pf.iter_batches(batch_size=3))
+table = pa.Table.from_batches([batch])
+
+for i in range(3):
+    audio = table.column('audio')[i].as_py()
+    data, sr = sf.read(io.BytesIO(audio['bytes']))
+    sf.write(f'test-assets/ja/reazonspeech_{i:03d}.wav', data, sr)
+```
+
+## C++コアのビルドとテスト
+
+### Windows
 
 ```bat
 scripts\run-core-tests.bat
@@ -24,7 +110,7 @@ cmake --build . --config Debug
 
 テストは `test-assets/` ディレクトリをカレントにして実行する必要がある（テスト用音声ファイルの相対パス解決のため）。OnnxRuntimeのDLLパスは `core\third-party\onnxruntime\lib\windows\x64` を `PATH` に追加する。
 
-### C++コアのビルド＆テスト（Linux/macOS）
+### Linux/macOS
 
 ```bash
 scripts/run-core-tests.sh
@@ -38,7 +124,7 @@ Linux実行時は `LD_LIBRARY_PATH` に `core/third-party/onnxruntime/lib/linux/
 
 ```bash
 cd test-assets
-../core/build/transcriber-test        # 例: Transcriberテストのみ
+../core/build/transcriber-test        # Transcriberテストのみ
 ../core/build/moonshine-c-api-test    # C APIテストのみ
 ```
 
@@ -51,14 +137,6 @@ cd test-assets
 ```
 
 `.clang-format` で定義（LLVMベース、2スペースインデント、80カラム制限）。
-
-### Pythonパッケージ
-
-```bash
-cd python && pip install -e .
-```
-
-`python/src/moonshine_voice/` にソースがある。ネイティブライブラリ（`.dylib`/`.so`/`.dll`）を同梱したプラットフォーム固有wheelとして配布。
 
 ## アーキテクチャ
 

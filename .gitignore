@@ -42,3 +42,6 @@ Package.resolved
 /moonshine-eval-results.xlsx
 /moonshine-eval-detailed-results.xlsx
 /datasets/
+test-assets/ja/
+nul
+.claude/
